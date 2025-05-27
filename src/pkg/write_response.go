@@ -6,13 +6,30 @@ import (
 	"net/http"
 )
 
-func WriteResponse(w http.ResponseWriter, resp interface{}, errString string, successString string) {
+// {
+//     "status":"success",
+//     "data":{},
+//     "message":"details added"
+// }
+
+// {
+//     "status":"failure",
+//     "message":"error occured"
+// }
+
+type StandardResponse struct {
+	Status  string      `json:"status"`
+	Data    interface{} `json:"data,omitempty"`
+	Message string      `json:"message"`
+}
+
+func WriteResponse(w http.ResponseWriter, statuscode int, resp StandardResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	err := json.NewEncoder(w).Encode(resp)
 	if err != nil {
-		http.Error(w, errString, http.StatusInternalServerError)
+		http.Error(w, "ERROR : ", http.StatusInternalServerError)
 	} else {
-		log.Println(successString)
+		log.Println(resp.Message)
 	}
 }

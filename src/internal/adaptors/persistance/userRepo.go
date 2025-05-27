@@ -20,6 +20,7 @@ func NewUserRepo(d *Database) ports.UserRepository {
 // --------------------------------AUTH----------------------------------------
 
 func (u *UserRepo) CreateUser(ctx context.Context, user dto.UserDetails) error {
+
 	hpassword, e := pkg.HashPassword(user.Password)
 	if e != nil {
 		fmt.Println("Unable to hash password : ", e)
@@ -29,6 +30,7 @@ func (u *UserRepo) CreateUser(ctx context.Context, user dto.UserDetails) error {
 	err := u.db.db.QueryRowContext(ctx, `
 		INSERT INTO user_details (username, email, password)
 		VALUES ($1, $2, $3)
+		
 		RETURNING id
 	`, user.Username, user.Email, hpassword).Scan(&userId)
 
@@ -78,6 +80,36 @@ func (u *UserRepo) GetUserByEmail(ctx context.Context, email string) (dto.UserDe
 	return user, nil
 }
 
+func (u *UserRepo) FindHelperBySkill(ctx context.Context, skill string) ([]dto.HelperDetails, error) {
+	rows, err := u.db.db.QueryContext(ctx, `SELECT user_details.id, username, skill_offered
+											FROM user_details JOIN skills_offered
+											ON user_details.id = skills_offered.user_id
+											WHERE skill_offered=$1`, skill)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var helpers []dto.HelperDetails
+
+	for rows.Next() {
+		var user dto.HelperDetails
+		err := rows.Scan(&user.Id, &user.Username, &user.SkillOffered)
+		if err != nil {
+			return nil, err
+		}
+
+		helpers = append(helpers, user)
+	}
+
+	// if err := rows.Err(); err != nil {
+	// 	return nil, err
+	// }
+
+	return helpers, nil
+}
+
 // --------------------------------SESSION----------------------------------------
 
 func (u *UserRepo) CreateSession(ctx context.Context, session dto.Session) error {
@@ -103,7 +135,18 @@ func (u *UserRepo) CreateSession(ctx context.Context, session dto.Session) error
 	return nil
 }
 
-func (u *UserRepo) CompleteSessionTx(ctx context.Context, sessionID int, feedback, status string) error {
+func (u *UserRepo) StartSession(ctx context.Context, session_id int) error {
+	_, err := u.db.db.ExecContext(ctx, `UPDATE sessions SET session_status='ongoing' WHERE session_id=$1`, session_id)
+	if err != nil {
+		log.Println("Error starting session : ", err)
+		return err
+	}
+
+	return nil
+}
+
+func (u *UserRepo) CompleteSessionTx(ctx context.Context, sessionID int, feedback string, status string) error {
+
 	tx, err := u.db.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

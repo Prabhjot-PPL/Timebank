@@ -3,7 +3,6 @@ package userhandler
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -33,25 +32,29 @@ func (u *UserHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		log.Println("Error white decoding request : ", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to register user) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
 	err = u.userService.RegisterUser(ctx, user)
-	resp := "User Registered Successfully"
-
 	if err != nil {
-		log.Println("Error in registeration response : ", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to register user) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
-	errString := "Failed to Register user."
-	successString := "User Registered successfully"
-	pkg.WriteResponse(w, resp, errString, successString)
+	response := pkg.StandardResponse{
+		Status:  "success",
+		Message: "User Registered Successfully ",
+	}
+	pkg.WriteResponse(w, http.StatusOK, response)
 }
 
 // LOGIN
@@ -63,15 +66,21 @@ func (u *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var requestUser dto.UserDetails
 	err := json.NewDecoder(r.Body).Decode(&requestUser)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to login user) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
 	loginResponse, err := u.userService.LoginUser(ctx, requestUser)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to login user) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
@@ -86,14 +95,43 @@ func (u *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &atCookie)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("x-user", loginResponse.FoundUser.Username)
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "successful login"})
+	response := pkg.StandardResponse{
+		Status:  "success",
+		Message: "User Logged-in Successfully ",
+	}
+	pkg.WriteResponse(w, http.StatusOK, response)
 
 }
 
-// --------------------------------SESSION----------------------------------------
+func (u *UserHandler) FindHelperHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	skill := r.URL.Query().Get("skill")
+	if skill == "" {
+		http.Error(w, "Missing skill query param", http.StatusBadRequest)
+		return
+	}
+
+	users, err := u.userService.FindUsersBySkill(ctx, skill)
+	if err != nil {
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to find helper) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusInternalServerError, response)
+		return
+	}
+
+	response := pkg.StandardResponse{
+		Status:  "success",
+		Data:    users,
+		Message: "Query Successful ",
+	}
+	pkg.WriteResponse(w, http.StatusOK, response)
+}
+
+// // --------------------------------SESSION----------------------------------------
 
 func (u *UserHandler) CreateSessionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -101,22 +139,63 @@ func (u *UserHandler) CreateSessionHandler(w http.ResponseWriter, r *http.Reques
 
 	var session dto.Session
 	if err := json.NewDecoder(r.Body).Decode(&session); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to create session) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
 	err := u.userService.CreateSession(ctx, session)
 	if err != nil {
-		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to create session) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusInternalServerError, response)
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Session created successfully"))
+	response := pkg.StandardResponse{
+		Status:  "success",
+		Message: "Session created Successful ",
+	}
+	pkg.WriteResponse(w, http.StatusOK, response)
 }
 
-// func (u *UserHandler) CompleteSessionHandler(w http.ResponseWriter, r *http.Request) {
-// }
+func (u *UserHandler) StartSessionHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	// Extract session ID from URL
+	sessionIDStr := chi.URLParam(r, "id")
+	sessionID, err := strconv.Atoi(sessionIDStr)
+	if err != nil {
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to start session) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
+		return
+	}
+
+	err = u.userService.StartSession(ctx, sessionID)
+	if err != nil {
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to create session user) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusInternalServerError, response)
+		return
+	}
+
+	response := pkg.StandardResponse{
+		Status:  "success",
+		Message: "Session started Successful ",
+	}
+	pkg.WriteResponse(w, http.StatusOK, response)
+}
 
 func (u *UserHandler) CompleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -126,7 +205,11 @@ func (u *UserHandler) CompleteSessionHandler(w http.ResponseWriter, r *http.Requ
 	sessionIDStr := chi.URLParam(r, "id")
 	sessionID, err := strconv.Atoi(sessionIDStr)
 	if err != nil {
-		http.Error(w, "Invalid session ID", http.StatusBadRequest)
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to start session) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
@@ -137,15 +220,26 @@ func (u *UserHandler) CompleteSessionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to start session) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusBadRequest, response)
 		return
 	}
 
 	if err := u.userService.CompleteSession(ctx, sessionID, req.Feedback, req.Status); err != nil {
-		http.Error(w, "Failed to complete session: "+err.Error(), http.StatusInternalServerError)
+		response := pkg.StandardResponse{
+			Status:  "failure",
+			Message: "(Failed to create session user) " + err.Error(),
+		}
+		pkg.WriteResponse(w, http.StatusInternalServerError, response)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Session completed successfully"))
+	response := pkg.StandardResponse{
+		Status:  "success",
+		Message: "Session completed Successful ",
+	}
+	pkg.WriteResponse(w, http.StatusOK, response)
 }

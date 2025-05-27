@@ -68,15 +68,23 @@ func (u *UserService) LoginUser(ctx context.Context, requestData dto.UserDetails
 
 }
 
-// --------------------------------SESSION----------------------------------------
+func (u *UserService) FindUsersBySkill(ctx context.Context, skill string) ([]dto.HelperDetails, error) {
+	return u.userRepo.FindHelperBySkill(ctx, skill)
+}
+
+// // --------------------------------SESSION----------------------------------------
 
 func (u *UserService) CreateSession(ctx context.Context, session dto.Session) error {
-	// You can add business validations here (optional)
+
 	if session.Helper == session.Recipient {
-		return errors.New("helper and recipient cannot be the same")
+		return errors.New("Helper and Recipient cannot be the same")
 	}
 
 	return u.userRepo.CreateSession(ctx, session)
+}
+
+func (u *UserService) StartSession(ctx context.Context, session_id int) error {
+	return u.userRepo.StartSession(ctx, session_id)
 }
 
 func (u *UserService) CompleteSession(ctx context.Context, sessionID int, feedback string, status string) error {
